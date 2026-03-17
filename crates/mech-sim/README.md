@@ -10,6 +10,12 @@ It exists to fill the exact gap the paper calls out: there was no reduced-order 
 
 This crate is deliberately not a full mech simulator. It is a serious proof-of-life simulator for the paper's minimal multi-timescale architecture.
 
+## Citation
+
+If you use `mech-sim`, cite:
+
+de Beer, R. (2026). *Gigawatt-Class Terrestrial Legged Vehicles: A Nuclear-Thermal, Pulse-Power, and Electrohydraulic Systems Architecture* (v1.0). Zenodo. https://doi.org/10.5281/zenodo.19070176
+
 ## Why this crate exists
 
 The paper argues that gigawatt-class terrestrial legged vehicles are constrained by an energy-power-bandwidth incompatibility:
@@ -129,8 +135,8 @@ Important modules:
 
 Additional docs:
 
-- [`docs/math.md`](/home/one/mech/crates/mech-sim/docs/math.md)
-- [`docs/architecture.md`](/home/one/mech/crates/mech-sim/docs/architecture.md)
+- [`docs/math.md`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/docs/math.md)
+- [`docs/architecture.md`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/docs/architecture.md)
 
 ## CLI
 
@@ -198,9 +204,9 @@ Example scenario config:
 
 Included examples:
 
-- [`configs/baseline.json`](/home/one/mech/crates/mech-sim/configs/baseline.json)
-- [`configs/hover_thermal.json`](/home/one/mech/crates/mech-sim/configs/hover_thermal.json)
-- [`configs/baseline_sweep.json`](/home/one/mech/crates/mech-sim/configs/baseline_sweep.json)
+- [`configs/baseline.json`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/configs/baseline.json)
+- [`configs/hover_thermal.json`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/configs/hover_thermal.json)
+- [`configs/baseline_sweep.json`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/configs/baseline_sweep.json)
 
 ## Outputs
 
@@ -369,7 +375,7 @@ It should be cited as a reduced-order architecture-validation layer, not as a fu
 
 The notebook lives at:
 
-- [`notebooks/mech_sim_colab.ipynb`](/home/one/mech/crates/mech-sim/notebooks/mech_sim_colab.ipynb)
+- [`notebooks/mech_sim_colab.ipynb`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/notebooks/mech_sim_colab.ipynb)
 
 It:
 
@@ -448,4 +454,4 @@ cargo run -p mech-sim -- sweep baseline
 
 Notebook:
 
-Open [`notebooks/mech_sim_colab.ipynb`](/home/one/mech/crates/mech-sim/notebooks/mech_sim_colab.ipynb) in Colab from the badge at the top of this README.
+Open [`notebooks/mech_sim_colab.ipynb`](https://github.com/infinityabundance/mech/blob/main/crates/mech-sim/notebooks/mech_sim_colab.ipynb) in Colab from the badge at the top of this README.
