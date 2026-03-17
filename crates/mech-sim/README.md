@@ -328,7 +328,10 @@ The upgraded notebook adds a conservative interactive analysis layer on top of t
   `coupled evolution`, `recharge duty cycle`, and `authority map`,
 - centerpiece figures for burst coupled evolution, thermal-limited hover behavior, and stress-case authority collapse,
 - paper-support Figures 7–11 and compact summary-table artifacts,
+- explicit Rust-vs-SciPy agreement artifacts and explanation blocks,
 - a one-click PDF report / bundle step that pulls directly from CSV and JSON outputs.
+
+The authority map should be read as the visual counterpart of the reduced mathematical relation `M(x, u) = G(Ep, T) u`: it shows how maneuver authority contracts across the admissible operating region as pulse energy falls or thermal state rises.
 
 ## Reproducibility
 
@@ -396,9 +399,14 @@ Notebook-generated artifacts are written additively under the burst run's timest
 - `notebook_artifacts/data/interactive_metrics.json`
 - `notebook_artifacts/data/rust_vs_scipy_burst_comparison.csv`
 - `notebook_artifacts/data/rust_vs_scipy_burst_metrics.json`
+- `notebook_artifacts/data/rust_scipy_agreement.csv`
+- `notebook_artifacts/data/rust_scipy_agreement.json`
 - `notebook_artifacts/data/paper_summary_table.csv`
 - `notebook_artifacts/data/paper_summary_table.md`
 - `notebook_artifacts/data/paper_summary_table.tex`
+- `notebook_artifacts/data/paper_results_table.csv`
+- `notebook_artifacts/data/paper_results_table.md`
+- `notebook_artifacts/data/paper_results_table.tex`
 - `notebook_artifacts/data/paper_support_manifest.json`
 - `notebook_artifacts/data/notebook_summary.json`
 - `notebook_artifacts/reports/mech_sim_report.pdf`

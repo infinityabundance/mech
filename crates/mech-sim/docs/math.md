@@ -8,8 +8,8 @@ The simulator evolves:
 
 - `Ep(t)` pulse-layer stored energy in joules.
 - `T(t)` aggregate thermal state in kelvin.
-- `y(t)` reduced mechanical output coordinate in meters.
-- `v(t) = dy/dt` reduced output velocity in meters per second.
+- `y(t)` reduced maneuver-response coordinate in meters.
+- `v(t) = dy/dt` reduced maneuver-response rate in meters per second.
 - `Elocal_i(t)` for `i = 1..4` limb-local energy buffers in joules.
 
 ## Central pulse-layer energy
@@ -118,6 +118,8 @@ The code uses smoothstep-shaped gain degradation:
 - high `T` reduces force authority,
 - high `T` increases damping,
 - high `T` softens stiffness.
+
+In the notebook and report layer, the authority map is the direct visual counterpart of this reduced dependence: it plots the admissible and degraded regions implied by the reduced maneuver-authority relation `M(x, u) = G(Ep, T) u`.
 
 ## Events and thresholds
 

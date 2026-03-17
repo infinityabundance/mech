@@ -100,5 +100,7 @@ The Colab notebook in `notebooks/mech_sim_colab.ipynb` is the analysis/report la
 - reruns baseline scenarios and a sweep,
 - reloads CSV/JSON outputs with pandas,
 - regenerates figures,
+- turns the authority map into the visual counterpart of the reduced maneuver-authority relation `M(x, u) = G(Ep, T) u`,
+- emits compact paper-support results tables and Rust-vs-SciPy agreement artifacts,
 - writes a PDF report,
 - zips the artifacts for download.

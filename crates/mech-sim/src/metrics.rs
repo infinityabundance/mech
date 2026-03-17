@@ -36,11 +36,14 @@ pub struct RunSummary {
     pub min_gain: f64,
     pub min_delivered_ratio: f64,
     pub energy_depleted_j: f64,
+    pub energy_depleted_gj: f64,
     pub recharge_fraction_of_full_reserve: f64,
     pub ideal_refill_time_s: Option<f64>,
     pub recharge_readiness_fraction: f64,
     pub successful_burst_fraction: f64,
     pub degraded_state_fraction: f64,
+    pub percent_time_thermal_limited: f64,
+    pub authority_loss_at_thermal_breach: Option<f64>,
     pub event_count: usize,
     pub energy_breach: bool,
     pub thermal_breach: bool,
@@ -101,6 +104,11 @@ pub fn summarize(
         .filter(|record| record.temperature_k >= config.model.thermal_limit_k)
         .count() as f64
         * dt_s;
+    let percent_time_thermal_limited = if config.solver.duration_s > 0.0 {
+        100.0 * time_above_thermal_threshold_s / config.solver.duration_s
+    } else {
+        0.0
+    };
     let max_actuator_demand_w = time_series
         .iter()
         .map(|record| record.requested_actuator_power_w)
@@ -165,6 +173,7 @@ pub fn summarize(
         local_imbalance(limb_buffers);
     let recharge_time_s = recharge_time(time_series, config.model.pulse_energy_max_j);
     let energy_depleted_j = (config.model.pulse_energy_initial_j - min_ep_j).max(0.0);
+    let energy_depleted_gj = energy_depleted_j / 1.0e9;
     let recharge_fraction_of_full_reserve =
         energy_depleted_j / config.model.pulse_energy_max_j.max(1.0);
     let ideal_refill_time_s =
@@ -193,6 +202,12 @@ pub fn summarize(
         .iter()
         .find(|event| event.event_type == "thermal_high")
         .map(|event| event.time_s);
+    let authority_loss_at_thermal_breach = first_thermal_breach_s.and_then(|time_s| {
+        time_series
+            .iter()
+            .find(|record| record.time_s >= time_s)
+            .map(|record| 1.0 - record.authority_utilization)
+    });
     let first_local_buffer_breach_s = events
         .iter()
         .find(|event| event.event_type == "local_buffer_low")
@@ -297,11 +312,14 @@ pub fn summarize(
             1.0
         },
         energy_depleted_j,
+        energy_depleted_gj,
         recharge_fraction_of_full_reserve,
         ideal_refill_time_s,
         recharge_readiness_fraction,
         successful_burst_fraction,
         degraded_state_fraction,
+        percent_time_thermal_limited,
+        authority_loss_at_thermal_breach,
         event_count: events.len(),
         energy_breach,
         thermal_breach,
@@ -407,6 +425,7 @@ pub fn derived_metrics(summary: &RunSummary) -> Vec<DerivedMetricRecord> {
             "fraction",
         ),
         metric("energy_depleted_j", summary.energy_depleted_j, "J"),
+        metric("energy_depleted_gj", summary.energy_depleted_gj, "GJ"),
         metric(
             "recharge_fraction_of_full_reserve",
             summary.recharge_fraction_of_full_reserve,
@@ -426,6 +445,11 @@ pub fn derived_metrics(summary: &RunSummary) -> Vec<DerivedMetricRecord> {
             "degraded_state_fraction",
             summary.degraded_state_fraction,
             "fraction",
+        ),
+        metric(
+            "percent_time_thermal_limited",
+            summary.percent_time_thermal_limited,
+            "percent",
         ),
         metric(
             "admissible_breach_count",
@@ -464,6 +488,13 @@ pub fn derived_metrics(summary: &RunSummary) -> Vec<DerivedMetricRecord> {
     }
     if let Some(value) = summary.ideal_refill_time_s {
         metrics.push(metric("ideal_refill_time_s", value, "s"));
+    }
+    if let Some(value) = summary.authority_loss_at_thermal_breach {
+        metrics.push(metric(
+            "authority_loss_at_thermal_breach",
+            value,
+            "fraction",
+        ));
     }
     if let Some(value) = summary.time_to_any_threshold_s {
         metrics.push(metric("time_to_any_threshold_s", value, "s"));
