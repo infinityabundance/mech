@@ -259,6 +259,14 @@ The baseline sweep also generates:
 
 The Colab notebook regenerates the figures independently from CSV/JSON outputs and produces the PDF report / downloadable zip bundle.
 
+The upgraded notebook adds a conservative interactive analysis layer on top of the existing crate workflow:
+
+- a SciPy `solve_ivp` reference implementation for the reduced `(Ep, T, y, v)` state,
+- Rust-vs-SciPy trajectory cross-checks using exported crate CSVs,
+- `ipywidgets` sliders for `eta_c`, `thrust_area`, `T_max`, `qr_gain`, `Pc_MW`, `Ep0_GJ`, and `burst_MW`,
+- three publication-ready figures generated in the notebook:
+  `coupled evolution`, `recharge duty cycle`, and `authority map`.
+
 ## Reproducibility
 
 - the solver is deterministic,
@@ -303,10 +311,29 @@ It:
 - clones or reuses the repository,
 - rebuilds `mech-sim`,
 - runs baseline scenarios and the baseline sweep,
+- runs a notebook-side SciPy reference model for the reduced state,
+- exposes interactive sensitivity sliders without requiring code edits,
 - loads outputs with pandas,
 - regenerates publication-style figures,
+- exports the coupled evolution figure, recharge duty-cycle figure, and authority map as both PNG and PDF,
+- compares notebook SciPy trajectories against Rust crate outputs when available,
 - writes a PDF report,
 - creates a zip archive with outputs and notebook artifacts.
+
+Notebook-generated artifacts are written additively under the burst run's timestamped output tree in:
+
+- `notebook_artifacts/figures/*.png`
+- `notebook_artifacts/figures/*.pdf`
+- `notebook_artifacts/data/interactive_reference_timeseries.csv`
+- `notebook_artifacts/data/interactive_recharge_cycles.csv`
+- `notebook_artifacts/data/authority_map.csv`
+- `notebook_artifacts/data/interactive_params.json`
+- `notebook_artifacts/data/interactive_metrics.json`
+- `notebook_artifacts/data/rust_vs_scipy_burst_comparison.csv`
+- `notebook_artifacts/data/rust_vs_scipy_burst_metrics.json`
+- `notebook_artifacts/data/notebook_summary.json`
+- `notebook_artifacts/reports/mech_sim_report.pdf`
+- `notebook_artifacts/artifact_bundle.zip`
 
 ## Validation targets covered by the crate
 
