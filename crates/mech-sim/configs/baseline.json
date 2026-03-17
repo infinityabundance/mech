@@ -1,0 +1,13 @@
+{
+  "mode": "scenario",
+  "preset": "burst",
+  "seed": 1,
+  "output_root": "output-mech-sim",
+  "overrides": {
+    "continuous_power_mw": 50.0,
+    "pulse_energy_gj": 4.0,
+    "initial_ep_gj": 4.0,
+    "burst_power_mw": 1000.0,
+    "burst_duration_s": 1.0
+  }
+}

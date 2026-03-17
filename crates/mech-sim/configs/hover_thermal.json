@@ -1,0 +1,12 @@
+{
+  "mode": "scenario",
+  "preset": "hover",
+  "seed": 1,
+  "output_root": "output-mech-sim",
+  "overrides": {
+    "continuous_power_mw": 50.0,
+    "pulse_energy_gj": 18.0,
+    "initial_ep_gj": 18.0,
+    "thermal_rejection_mw_per_k": 2.5
+  }
+}

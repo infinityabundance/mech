@@ -1,0 +1,4 @@
+/target
+/output-mech-sim/
+**/output-mech-sim/
+**/.DS_Store

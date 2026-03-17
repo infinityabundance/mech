@@ -1,0 +1,338 @@
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/infinityabundance/mech/blob/main/crates/mech-sim/notebooks/mech_sim_colab.ipynb)
+
+# mech-sim
+
+`mech-sim` is a deterministic Rust crate for reduced-order architecture validation of the paper:
+
+`Gigawatt-Class Terrestrial Legged Vehicles: A Nuclear-Thermal, Pulse-Power, and Electrohydraulic Systems Architecture`
+
+It exists to fill the exact gap the paper calls out: there was no reduced-order simulation layer validating whether the architecture's pulse-power, recharge, thermal, and local actuation claims stay coherent when forced into a reproducible numerical model.
+
+This crate is deliberately not a full mech simulator. It is a serious proof-of-life simulator for the paper's minimal multi-timescale architecture.
+
+## Why this crate exists
+
+The paper argues that gigawatt-class terrestrial legged vehicles are constrained by an energy-power-bandwidth incompatibility:
+
+- continuous sources such as nuclear-thermal systems can supply large average power but not the full instantaneous maneuver bandwidth,
+- pulse layers can cover burst demand but must recharge on slower timescales,
+- local actuation layers need even faster short-horizon buffering and distribution,
+- thermal rejection ultimately determines sustained maneuver feasibility.
+
+Those statements are compelling architecturally, but they needed a deterministic reduced-order validation layer. `mech-sim` is that layer.
+
+## What it implements
+
+The simulator directly encodes the reduced-order model discussed in the paper:
+
+- `Ep(t)` pulse-layer stored energy
+- `T(t)` aggregate thermal state
+- `y(t)` reduced mechanical output
+- `v(t)` reduced output velocity
+- `Elocal_i(t)` for four limb-local energy buffers
+
+The implemented scaffold is:
+
+```text
+dEp/dt = eta_c * Pc - Ptransfer_total - Pl(Ep, T)
+Ct * dT/dt = Qg(Pdelivered, Ptransfer_total, Pl) - Qr(T)
+M * y_ddot + D(T) * y_dot + K(y, T) * y = G(Ep, T) * u + d(t)
+```
+
+with a limb-local extension:
+
+```text
+dElocal_i/dt = Ptransfer_i - Pdraw_i - Plocal_loss
+Pdelivered_i = min(Pdraw_i, Ptransfer_i + Elocal_i / dt)
+```
+
+The point is not high-fidelity electrohydraulic detail. The point is to make the paper's architecture simulation-ready with inspectable units, explicit parameters, deterministic behavior, and hard constraint events.
+
+## Scenario library
+
+Built-in presets:
+
+- `burst`
+  1 GW-class, 1 second burst followed by recharge and thermal decay.
+- `recharge`
+  3 GJ recharge interpretation case with `Pc = 50 MW` and approximately 60 second refill behavior.
+- `duty-cycle`
+  Repeated burst / coast / recharge pattern for duty-cycle-limited behavior.
+- `hover`
+  350-500 MW sustained maneuver case calibrated so the aggregate thermal state becomes the dominant limiter.
+- `stress`
+  High limb-force request with biased local allocation, local-buffer depletion, and gain degradation.
+- `constraint-violation`
+  Explicit failure case that emits low-energy, local-buffer, saturation, and related flags.
+
+The baseline sweep expands those into reproducible parameter studies across:
+
+- continuous power `Pc`
+- burst power
+- burst duration
+- pulse storage reserve
+- thermal rejection coefficient
+- actuator demand scale
+- damping / stiffness response scaling
+
+## Code structure
+
+```text
+crates/mech-sim/
+├── Cargo.toml
+├── README.md
+├── configs/
+├── docs/
+├── examples/
+├── notebooks/
+├── src/
+└── tests/
+```
+
+Important modules:
+
+- `src/model.rs`
+  The reduced-order equations, actuator demand, losses, thermal balance, gain degradation, and local buffer flow rules.
+- `src/integrator.rs`
+  Fixed-step deterministic simulation loop.
+- `src/scenarios.rs`
+  Paper-aligned scenario presets and sweep presets.
+- `src/metrics.rs`
+  Run-level proof-of-life metrics and failure flags.
+- `src/outputs.rs`
+  Timestamped output directory creation and CSV/JSON writing.
+- `src/plots.rs`
+  Rust-native PNG plot generation.
+
+Additional docs:
+
+- [`docs/math.md`](/home/one/mech/crates/mech-sim/docs/math.md)
+- [`docs/architecture.md`](/home/one/mech/crates/mech-sim/docs/architecture.md)
+
+## CLI
+
+Run from the workspace root:
+
+```bash
+cargo run -p mech-sim -- scenario burst
+cargo run -p mech-sim -- scenario recharge --pc-mw 50 --ep-gj 3
+cargo run -p mech-sim -- scenario hover
+cargo run -p mech-sim -- sweep baseline
+cargo run -p mech-sim -- config crates/mech-sim/configs/baseline.json
+```
+
+Main modes:
+
+- `scenario <preset>`
+- `sweep <preset>`
+- `config <path>`
+
+Useful flags:
+
+- `--output-root <path>`
+- `--seed <u64>`
+- `--pc-mw <f64>`
+- `--ep-gj <f64>`
+- `--initial-ep-gj <f64>`
+- `--duration-s <f64>`
+- `--dt-s <f64>`
+- `--thermal-rejection-mw-per-k <f64>`
+- `--burst-power-mw <f64>`
+- `--burst-duration-s <f64>`
+- `--actuator-demand-scale <f64>`
+- `--allocation-strategy <equal|front-biased|rear-biased|diagonal-bias>`
+- `--local-buffer-mj <f64>`
+- `--damping-scale <f64>`
+- `--stiffness-scale <f64>`
+
+Full CLI help:
+
+```bash
+cargo run -p mech-sim -- --help
+```
+
+## JSON config mode
+
+Example scenario config:
+
+```json
+{
+  "mode": "scenario",
+  "preset": "burst",
+  "seed": 1,
+  "output_root": "output-mech-sim",
+  "overrides": {
+    "continuous_power_mw": 50.0,
+    "pulse_energy_gj": 4.0,
+    "initial_ep_gj": 4.0,
+    "burst_power_mw": 1000.0,
+    "burst_duration_s": 1.0
+  }
+}
+```
+
+Included examples:
+
+- [`configs/baseline.json`](/home/one/mech/crates/mech-sim/configs/baseline.json)
+- [`configs/hover_thermal.json`](/home/one/mech/crates/mech-sim/configs/hover_thermal.json)
+- [`configs/baseline_sweep.json`](/home/one/mech/crates/mech-sim/configs/baseline_sweep.json)
+
+## Outputs
+
+Every single run writes:
+
+- `time_series.csv`
+- `limb_buffers.csv`
+- `events.csv`
+- `summary.json`
+- `params.json`
+- `derived_metrics.csv`
+- `plots/*.png`
+
+Every sweep root writes:
+
+- `sweep_summary.csv`
+- `sweep_summary.json`
+- `plots/*.png`
+- nested per-case directories containing the full single-run artifact set
+
+The default output root is:
+
+```text
+output-mech-sim/
+```
+
+Each invocation creates a timestamped subdirectory using:
+
+```text
+YYYY-MM-DD_HH-MM-SS
+```
+
+Example:
+
+```text
+output-mech-sim/2026-03-17_11-21-03/
+```
+
+This directory policy is enforced so runs do not overwrite one another.
+
+## Metrics
+
+The summary layer computes:
+
+- min / max / final `Ep`
+- time below energy threshold
+- peak `T`
+- time above thermal threshold
+- max actuator demand
+- saturation counts
+- recharge time
+- delivered mechanical work
+- success / failure flags
+- effective duty cycle
+- local limb imbalance metrics
+- first-threshold timestamps
+
+These metrics are exposed both in JSON and in flat CSV form.
+
+## Proof-of-life figures
+
+The Rust crate generates PNG figures for:
+
+- `Ep vs time`
+- `T vs time`
+- actuator requested vs delivered power
+- reduced output `y(t)`
+- recharge curve
+- normalized burst overlays
+- local limb buffer trajectories
+- `Ep-T` phase portrait
+- actuator draw vs `Ep`
+
+The baseline sweep also generates:
+
+- `Pc vs recharge time`
+- thermal rejection vs peak temperature
+- burst power vs time-to-threshold
+- pulse storage vs effective duty cycle
+- actuator demand scale vs saturation count
+
+The Colab notebook regenerates the figures independently from CSV/JSON outputs and produces the PDF report / downloadable zip bundle.
+
+## Reproducibility
+
+- the solver is deterministic,
+- built-in presets have no hidden randomness,
+- any seed-driven modulation must be enabled explicitly,
+- all resolved parameters are written to `params.json`,
+- all metrics are derived from the exported run history rather than hidden in-memory state.
+
+This crate prioritizes reproducibility over model complexity.
+
+## Limitations
+
+What this simulator does validate:
+
+- pulse discharge vs recharge coherence
+- thermal rise and rejection trends over repeated or sustained maneuvers
+- actuator demand vs pulse-layer depletion
+- local limb buffer depletion and recovery
+- explicit energy / thermal / local-buffer / saturation events
+- parameter sensitivity across continuous power, storage, rejection, and demand
+
+What it does not validate:
+
+- multibody leg dynamics
+- terrain interaction
+- detailed hydraulic spool dynamics
+- nuclear thermal primary-loop transients
+- structural loads or fatigue
+- closed-loop gait control
+
+It should be cited as a reduced-order architecture-validation layer, not as a full vehicle performance simulator.
+
+## Notebook and report workflow
+
+The notebook lives at:
+
+- [`notebooks/mech_sim_colab.ipynb`](/home/one/mech/crates/mech-sim/notebooks/mech_sim_colab.ipynb)
+
+It:
+
+- installs Rust if needed,
+- clones or reuses the repository,
+- rebuilds `mech-sim`,
+- runs baseline scenarios and the baseline sweep,
+- loads outputs with pandas,
+- regenerates publication-style figures,
+- writes a PDF report,
+- creates a zip archive with outputs and notebook artifacts.
+
+## Validation targets covered by the crate
+
+The current implementation directly produces the missing proof-of-life layer for:
+
+- a 1 GW pulse discharge vs recharge tail,
+- a 3 GJ recharge interpretation under 50 MW-class continuous power,
+- duty-cycle-limited burst/coast behavior,
+- a sustained maneuver case where thermal limits dominate,
+- local-limb buffer depletion and recovery,
+- explicit machine-readable constraint breaches.
+
+## Quick start
+
+Baseline scenario:
+
+```bash
+cargo run -p mech-sim -- scenario burst
+```
+
+Baseline sweep:
+
+```bash
+cargo run -p mech-sim -- sweep baseline
+```
+
+Notebook:
+
+Open [`notebooks/mech_sim_colab.ipynb`](/home/one/mech/crates/mech-sim/notebooks/mech_sim_colab.ipynb) in Colab from the badge at the top of this README.

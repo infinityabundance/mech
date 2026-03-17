@@ -1,0 +1,7 @@
+{
+  "mode": "sweep",
+  "preset": "baseline",
+  "seed": 1,
+  "output_root": "output-mech-sim",
+  "overrides": {}
+}
