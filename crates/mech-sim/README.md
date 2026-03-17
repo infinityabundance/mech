@@ -27,8 +27,8 @@ The simulator directly encodes the reduced-order model discussed in the paper:
 
 - `Ep(t)` pulse-layer stored energy
 - `T(t)` aggregate thermal state
-- `y(t)` reduced mechanical output
-- `v(t)` reduced output velocity
+- `y(t)` reduced maneuver response / reduced mechanical output
+- `v(t)` reduced response rate
 - `Elocal_i(t)` for four limb-local energy buffers
 
 The implemented scaffold is:
@@ -47,6 +47,20 @@ Pdelivered_i = min(Pdraw_i, Ptransfer_i + Elocal_i / dt)
 ```
 
 The point is not high-fidelity electrohydraulic detail. The point is to make the paper's architecture simulation-ready with inspectable units, explicit parameters, deterministic behavior, and hard constraint events.
+
+## Interpreting `y` and mechanical work
+
+`y` is a reduced-order maneuver-response variable. It is intentionally coupled to pulse energy, thermal state, and actuator authority, but it should not be read as literal full-body mech displacement unless that interpretation is justified independently.
+
+This means the crate is strongest as validation of:
+
+- layered energy architecture,
+- recharge behavior,
+- thermal limitation,
+- authority degradation,
+- local-buffer collapse and recovery.
+
+Delivered mechanical work is therefore best read as reduced-order authority-delivery evidence rather than full rigid-body maneuver realism. Small values do not undercut the architecture-level conclusions; they simply reflect the scope of the reduced model.
 
 ## Scenario library
 
@@ -75,6 +89,13 @@ The baseline sweep expands those into reproducible parameter studies across:
 - actuator demand scale
 - damping / stiffness response scaling
 
+Additional sweep presets extend that baseline conservatively:
+
+- `thermal-duty-matrix`
+  Thermal rejection versus repeated-burst cadence for heatmap-style duty-cycle interpretation.
+- `limb-allocation-comparison`
+  Stress-case comparison across allocation policies to expose local-buffer collapse, imbalance, and delivered/requested authority differences.
+
 ## Code structure
 
 ```text
@@ -98,9 +119,11 @@ Important modules:
 - `src/scenarios.rs`
   Paper-aligned scenario presets and sweep presets.
 - `src/metrics.rs`
-  Run-level proof-of-life metrics and failure flags.
+  Run-level proof-of-life metrics, interpretation-aware recharge fields, admissible-region summaries, and reduced-order Lyapunov monitor outputs.
+- `src/monitor.rs`
+  Admissible-region monitoring, reduced-response target proxy, figure metadata, and stability helpers.
 - `src/outputs.rs`
-  Timestamped output directory creation and CSV/JSON writing.
+  Timestamped output directory creation plus additive CSV/JSON writing for monitor and figure metadata.
 - `src/plots.rs`
   Rust-native PNG plot generation.
 
@@ -118,6 +141,8 @@ cargo run -p mech-sim -- scenario burst
 cargo run -p mech-sim -- scenario recharge --pc-mw 50 --ep-gj 3
 cargo run -p mech-sim -- scenario hover
 cargo run -p mech-sim -- sweep baseline
+cargo run -p mech-sim -- sweep thermal-duty-matrix
+cargo run -p mech-sim -- sweep limb-allocation-comparison
 cargo run -p mech-sim -- config crates/mech-sim/configs/baseline.json
 ```
 
@@ -185,6 +210,8 @@ Every single run writes:
 - `limb_buffers.csv`
 - `events.csv`
 - `summary.json`
+- `stability_summary.json`
+- `figure_metadata.json`
 - `params.json`
 - `derived_metrics.csv`
 - `plots/*.png`
@@ -195,6 +222,14 @@ Every sweep root writes:
 - `sweep_summary.json`
 - `plots/*.png`
 - nested per-case directories containing the full single-run artifact set
+
+Additional sweep presets also emit additive exports such as:
+
+- `thermal_duty_matrix.csv`
+- `thermal_duty_matrix.json`
+- `thermal_duty_heatmap.csv`
+- `limb_allocation_comparison.csv`
+- `limb_allocation_comparison.json`
 
 The default output root is:
 
@@ -232,8 +267,23 @@ The summary layer computes:
 - effective duty cycle
 - local limb imbalance metrics
 - first-threshold timestamps
+- mean delivered/requested ratio and normalized authority utilization
+- reduced-response efficiency
+- partial-refill interpretation fields such as `energy_depleted_j`, `recharge_fraction_of_full_reserve`, and `ideal_refill_time_s`
+- admissible-region breach counts and percent time outside the admissible region
+- clamp counts for `Ep`, `T`, `y`, and `ydot`
+- reduced-order Lyapunov monitor fields `V`, `dV/dt`, and local stability-margin summaries
 
 These metrics are exposed both in JSON and in flat CSV form.
+
+The time-series output now also carries additive monitor columns for:
+
+- reduced-response target and error,
+- Lyapunov candidate `V` and numerical `dV/dt`,
+- authority utilization,
+- raw proposed next-state values,
+- clamp flags,
+- admissible-boundary proximity flags.
 
 ## Proof-of-life figures
 
@@ -248,6 +298,16 @@ The Rust crate generates PNG figures for:
 - local limb buffer trajectories
 - `Ep-T` phase portrait
 - actuator draw vs `Ep`
+
+It also emits additive paper-support PNGs when the relevant scenario or sweep is run:
+
+- `burst_ep_vs_time.png`
+- `hover_temperature_vs_time.png`
+- `stress_limb_buffers.png`
+- `sweep_pc_vs_recharge.png`
+- `phase_portrait.png`
+- `thermal_duty_heatmap.png`
+- `limb_allocation_comparison.png`
 
 The baseline sweep also generates:
 
@@ -265,7 +325,10 @@ The upgraded notebook adds a conservative interactive analysis layer on top of t
 - Rust-vs-SciPy trajectory cross-checks using exported crate CSVs,
 - `ipywidgets` sliders for `eta_c`, `thrust_area`, `T_max`, `qr_gain`, `Pc_MW`, `Ep0_GJ`, and `burst_MW`,
 - three publication-ready figures generated in the notebook:
-  `coupled evolution`, `recharge duty cycle`, and `authority map`.
+  `coupled evolution`, `recharge duty cycle`, and `authority map`,
+- centerpiece figures for burst coupled evolution, thermal-limited hover behavior, and stress-case authority collapse,
+- paper-support Figures 7–11 and compact summary-table artifacts,
+- a one-click PDF report / bundle step that pulls directly from CSV and JSON outputs.
 
 ## Reproducibility
 
@@ -311,6 +374,7 @@ It:
 - clones or reuses the repository,
 - rebuilds `mech-sim`,
 - runs baseline scenarios and the baseline sweep,
+- runs the thermal-duty and limb-allocation comparison sweeps,
 - runs a notebook-side SciPy reference model for the reduced state,
 - exposes interactive sensitivity sliders without requiring code edits,
 - loads outputs with pandas,
@@ -327,10 +391,15 @@ Notebook-generated artifacts are written additively under the burst run's timest
 - `notebook_artifacts/data/interactive_reference_timeseries.csv`
 - `notebook_artifacts/data/interactive_recharge_cycles.csv`
 - `notebook_artifacts/data/authority_map.csv`
+- `notebook_artifacts/data/authority_map_metadata.json`
 - `notebook_artifacts/data/interactive_params.json`
 - `notebook_artifacts/data/interactive_metrics.json`
 - `notebook_artifacts/data/rust_vs_scipy_burst_comparison.csv`
 - `notebook_artifacts/data/rust_vs_scipy_burst_metrics.json`
+- `notebook_artifacts/data/paper_summary_table.csv`
+- `notebook_artifacts/data/paper_summary_table.md`
+- `notebook_artifacts/data/paper_summary_table.tex`
+- `notebook_artifacts/data/paper_support_manifest.json`
 - `notebook_artifacts/data/notebook_summary.json`
 - `notebook_artifacts/reports/mech_sim_report.pdf`
 - `notebook_artifacts/artifact_bundle.zip`
@@ -345,6 +414,15 @@ The current implementation directly produces the missing proof-of-life layer for
 - a sustained maneuver case where thermal limits dominate,
 - local-limb buffer depletion and recovery,
 - explicit machine-readable constraint breaches.
+
+## Recharge interpretation note
+
+The burst scenario and the dedicated recharge scenario are intentionally different.
+
+- `burst` measures a partial refill tail after a single pulse discharge.
+- `recharge` measures a much deeper refill case centered on a 3 GJ reserve at `Pc = 50 MW`.
+
+Those times should therefore not be compared as if they were the same refill depth.
 
 ## Quick start
 

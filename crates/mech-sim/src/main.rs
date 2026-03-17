@@ -26,7 +26,7 @@ struct Cli {
 enum Commands {
     /// Run a built-in deterministic scenario preset.
     Scenario(ScenarioArgs),
-    /// Run the built-in baseline sweep suite.
+    /// Run a built-in deterministic sweep preset.
     Sweep(SweepArgs),
     /// Load a JSON config file for scenario or sweep execution.
     Config(ConfigArgs),
@@ -69,11 +69,21 @@ struct OverrideArgs {
     thermal_rejection_mw_per_k: Option<f64>,
     #[arg(long, help = "Override actuator peak power in MW.")]
     burst_power_mw: Option<f64>,
-    #[arg(long, help = "Override the primary burst duration in seconds when a burst segment exists.")]
+    #[arg(
+        long,
+        help = "Override the primary burst duration in seconds when a burst segment exists."
+    )]
     burst_duration_s: Option<f64>,
-    #[arg(long, help = "Scale scenario command demand before it reaches the actuator model.")]
+    #[arg(
+        long,
+        help = "Scale scenario command demand before it reaches the actuator model."
+    )]
     actuator_demand_scale: Option<f64>,
-    #[arg(long, value_enum, help = "Override limb-local power allocation strategy.")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Override limb-local power allocation strategy."
+    )]
     allocation_strategy: Option<AllocationStrategy>,
     #[arg(long, help = "Override per-limb local buffer energy capacity in MJ.")]
     local_buffer_mj: Option<f64>,
@@ -81,9 +91,15 @@ struct OverrideArgs {
     damping_scale: Option<f64>,
     #[arg(long, help = "Scale the nominal mechanical stiffness coefficient.")]
     stiffness_scale: Option<f64>,
-    #[arg(long, help = "Apply deterministic seed-driven command wobble amplitude.")]
+    #[arg(
+        long,
+        help = "Apply deterministic seed-driven command wobble amplitude."
+    )]
     seeded_command_wobble: Option<f64>,
-    #[arg(long, help = "Apply deterministic seed-driven disturbance amplitude in N.")]
+    #[arg(
+        long,
+        help = "Apply deterministic seed-driven disturbance amplitude in N."
+    )]
     seeded_disturbance_n: Option<f64>,
 }
 
@@ -125,11 +141,9 @@ fn main() -> Result<()> {
             &cli.output_root,
             cli.seed,
         )?,
-        Commands::Config(args) => run_config_file_with_overrides(
-            args.path,
-            Some(&cli.output_root),
-            Some(cli.seed),
-        )?,
+        Commands::Config(args) => {
+            run_config_file_with_overrides(args.path, Some(&cli.output_root), Some(cli.seed))?
+        }
     };
 
     println!("{}", run_root.display());

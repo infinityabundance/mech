@@ -37,12 +37,16 @@ impl ScenarioPreset {
 #[serde(rename_all = "kebab-case")]
 pub enum SweepPreset {
     Baseline,
+    ThermalDutyMatrix,
+    LimbAllocationComparison,
 }
 
 impl SweepPreset {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Baseline => "baseline",
+            Self::ThermalDutyMatrix => "thermal-duty-matrix",
+            Self::LimbAllocationComparison => "limb-allocation-comparison",
         }
     }
 }
@@ -147,6 +151,8 @@ pub struct SweepCaseMetadata {
     pub actuator_demand_scale: f64,
     pub damping_scale: f64,
     pub stiffness_scale: f64,
+    pub burst_cadence_s: Option<f64>,
+    pub allocation_strategy: Option<AllocationStrategy>,
 }
 
 #[derive(Debug, Clone)]
@@ -296,8 +302,10 @@ impl SimulationConfig {
             self.model.pulse_energy_max_j = pulse_max_j;
             self.model.pulse_energy_min_j = pulse_max_j * ratio;
             self.model.low_energy_threshold_j = pulse_max_j * 0.15;
-            self.model.pulse_energy_initial_j =
-                self.model.pulse_energy_initial_j.min(self.model.pulse_energy_max_j);
+            self.model.pulse_energy_initial_j = self
+                .model
+                .pulse_energy_initial_j
+                .min(self.model.pulse_energy_max_j);
         }
         if let Some(value) = overrides.initial_ep_gj {
             self.model.pulse_energy_initial_j = gj_to_j(value);
@@ -349,7 +357,8 @@ impl SimulationConfig {
             .model
             .pulse_energy_initial_j
             .clamp(0.0, self.model.pulse_energy_max_j);
-        self.validate().context("post-override config validation failed")
+        self.validate()
+            .context("post-override config validation failed")
     }
 }
 

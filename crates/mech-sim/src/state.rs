@@ -15,13 +15,7 @@ pub struct SystemState {
 }
 
 impl SystemState {
-    pub fn new(
-        ep_j: f64,
-        temperature_k: f64,
-        y_m: f64,
-        v_mps: f64,
-        local_buffer_j: f64,
-    ) -> Self {
+    pub fn new(ep_j: f64, temperature_k: f64, y_m: f64, v_mps: f64, local_buffer_j: f64) -> Self {
         Self {
             time_s: 0.0,
             ep_j,
@@ -77,6 +71,14 @@ pub struct StepDiagnostics {
     pub ep_dot_j_per_s: f64,
     pub temperature_dot_k_per_s: f64,
     pub mechanical_power_w: f64,
+    pub raw_next_ep_j: f64,
+    pub raw_next_temperature_k: f64,
+    pub raw_next_y_m: f64,
+    pub raw_next_v_mps: f64,
+    pub ep_clamped: bool,
+    pub temperature_clamped: bool,
+    pub y_clamped: bool,
+    pub v_clamped: bool,
     pub limb_flows: [LimbFlow; LIMB_COUNT],
 }
 
@@ -106,6 +108,14 @@ impl StepDiagnostics {
             ep_dot_j_per_s: 0.0,
             temperature_dot_k_per_s: 0.0,
             mechanical_power_w: 0.0,
+            raw_next_ep_j: 0.0,
+            raw_next_temperature_k: 0.0,
+            raw_next_y_m: 0.0,
+            raw_next_v_mps: 0.0,
+            ep_clamped: false,
+            temperature_clamped: false,
+            y_clamped: false,
+            v_clamped: false,
             limb_flows: std::array::from_fn(|index| LimbFlow {
                 limb: LIMB_NAMES[index].to_string(),
                 requested_power_w: 0.0,
@@ -147,6 +157,24 @@ pub struct TimeSeriesRecord {
     pub ep_dot_j_per_s: f64,
     pub temperature_dot_k_per_s: f64,
     pub mechanical_power_w: f64,
+    pub authority_utilization: f64,
+    pub reduced_response_target_y_m: f64,
+    pub reduced_response_target_rate_mps: f64,
+    pub reduced_response_error_m: f64,
+    pub reduced_response_error_rate_mps: f64,
+    pub lyapunov_v: f64,
+    pub lyapunov_dv_dt: f64,
+    pub raw_next_ep_j: f64,
+    pub raw_next_temperature_k: f64,
+    pub raw_next_y_m: f64,
+    pub raw_next_v_mps: f64,
+    pub ep_clamped: bool,
+    pub temperature_clamped: bool,
+    pub y_clamped: bool,
+    pub ydot_clamped: bool,
+    pub near_admissible_boundary: bool,
+    pub outside_admissible_region: bool,
+    pub admissible_margin_fraction: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,4 +212,6 @@ pub struct EventLatch {
     pub high_temperature: bool,
     pub local_buffer_low: bool,
     pub saturated: bool,
+    pub admissible_outside: bool,
+    pub admissible_margin: bool,
 }

@@ -138,12 +138,11 @@ pub fn step_state(
         commanded_recharge_power_w += recharge_by_limb[index];
     }
 
-    let available_central_energy_j =
-        (state.ep_j + params.recharge_efficiency * params.continuous_power_w * dt_s)
-            - parasitic_loss_w * dt_s;
+    let available_central_energy_j = (state.ep_j
+        + params.recharge_efficiency * params.continuous_power_w * dt_s)
+        - parasitic_loss_w * dt_s;
     let central_scale = if total_transfer_request_w > 0.0 {
-        (available_central_energy_j / (total_transfer_request_w * dt_s))
-            .clamp(0.0, 1.0)
+        (available_central_energy_j / (total_transfer_request_w * dt_s)).clamp(0.0, 1.0)
     } else {
         1.0
     };
@@ -201,14 +200,14 @@ pub fn step_state(
         1.0
     };
     let mechanical_force_n = gain * command_fraction * delivered_ratio;
-    let acceleration_mps2 = (mechanical_force_n + input.disturbance_n
-        - damping * state.v_mps
-        - stiffness * state.y_m)
-        / params.mechanical_mass_kg.max(1.0);
+    let acceleration_mps2 =
+        (mechanical_force_n + input.disturbance_n - damping * state.v_mps - stiffness * state.y_m)
+            / params.mechanical_mass_kg.max(1.0);
+    let raw_next_v_mps = state.v_mps + acceleration_mps2 * dt_s;
     let next_v_mps =
-        (state.v_mps + acceleration_mps2 * dt_s).clamp(-params.max_velocity_m_per_s, params.max_velocity_m_per_s);
-    let next_y_m =
-        (state.y_m + next_v_mps * dt_s).clamp(-params.max_displacement_m, params.max_displacement_m);
+        raw_next_v_mps.clamp(-params.max_velocity_m_per_s, params.max_velocity_m_per_s);
+    let raw_next_y_m = state.y_m + next_v_mps * dt_s;
+    let next_y_m = raw_next_y_m.clamp(-params.max_displacement_m, params.max_displacement_m);
     let mechanical_power_w = mechanical_force_n * next_v_mps;
 
     let heat_generation_w = heat_generation(
@@ -218,14 +217,16 @@ pub fn step_state(
         parasitic_loss_w,
     );
     let heat_rejection_w = heat_rejection(params, state.temperature_k);
-    let ep_dot_j_per_s =
-        params.recharge_efficiency * params.continuous_power_w - central_transfer_power_w - parasitic_loss_w;
+    let ep_dot_j_per_s = params.recharge_efficiency * params.continuous_power_w
+        - central_transfer_power_w
+        - parasitic_loss_w;
     let temperature_dot_k_per_s =
         (heat_generation_w - heat_rejection_w) / params.thermal_capacity_j_per_k.max(1.0);
 
-    let next_ep_j = (state.ep_j + ep_dot_j_per_s * dt_s).clamp(0.0, params.pulse_energy_max_j);
-    let next_temperature_k =
-        (state.temperature_k + temperature_dot_k_per_s * dt_s).max(params.ambient_temperature_k);
+    let raw_next_ep_j = state.ep_j + ep_dot_j_per_s * dt_s;
+    let next_ep_j = raw_next_ep_j.clamp(0.0, params.pulse_energy_max_j);
+    let raw_next_temperature_k = state.temperature_k + temperature_dot_k_per_s * dt_s;
+    let next_temperature_k = raw_next_temperature_k.max(params.ambient_temperature_k);
 
     let next_state = SystemState {
         time_s: state.time_s + dt_s,
@@ -260,6 +261,14 @@ pub fn step_state(
         ep_dot_j_per_s,
         temperature_dot_k_per_s,
         mechanical_power_w,
+        raw_next_ep_j,
+        raw_next_temperature_k,
+        raw_next_y_m,
+        raw_next_v_mps,
+        ep_clamped: (next_ep_j - raw_next_ep_j).abs() > 1.0e-9,
+        temperature_clamped: (next_temperature_k - raw_next_temperature_k).abs() > 1.0e-9,
+        y_clamped: (next_y_m - raw_next_y_m).abs() > 1.0e-9,
+        v_clamped: (next_v_mps - raw_next_v_mps).abs() > 1.0e-9,
         limb_flows,
     };
 
@@ -283,7 +292,9 @@ pub fn actuator_power_draw(
 pub fn parasitic_loss(params: &ModelParameters, ep_j: f64, temperature_k: f64) -> f64 {
     let soc = (ep_j / params.pulse_energy_max_j.max(1.0)).clamp(0.0, 1.5);
     let thermal_excess = (temperature_k - params.ambient_temperature_k).max(0.0);
-    params.loss_idle_w + params.loss_storage_coeff_w * soc * soc + params.loss_thermal_coeff_w_per_k * thermal_excess
+    params.loss_idle_w
+        + params.loss_storage_coeff_w * soc * soc
+        + params.loss_thermal_coeff_w_per_k * thermal_excess
 }
 
 pub fn heat_generation(
@@ -305,7 +316,9 @@ pub fn heat_rejection(params: &ModelParameters, temperature_k: f64) -> f64 {
 
 pub fn damping(params: &ModelParameters, temperature_k: f64) -> f64 {
     let temp_fraction = normalized_temperature_fraction(params, temperature_k);
-    params.damping_n_s_per_m * params.damping_scale * (1.0 + params.damping_temp_coeff * temp_fraction)
+    params.damping_n_s_per_m
+        * params.damping_scale
+        * (1.0 + params.damping_temp_coeff * temp_fraction)
 }
 
 pub fn stiffness(params: &ModelParameters, y_m: f64, temperature_k: f64) -> f64 {
@@ -316,14 +329,16 @@ pub fn stiffness(params: &ModelParameters, y_m: f64, temperature_k: f64) -> f64 
 }
 
 pub fn energy_factor(params: &ModelParameters, ep_j: f64) -> f64 {
-    let normalized = ((ep_j - params.low_energy_threshold_j) / params.energy_gain_soft_zone_j.max(1.0))
-        .clamp(0.0, 1.0);
+    let normalized = ((ep_j - params.low_energy_threshold_j)
+        / params.energy_gain_soft_zone_j.max(1.0))
+    .clamp(0.0, 1.0);
     params.min_gain_fraction + (1.0 - params.min_gain_fraction) * smoothstep01(normalized)
 }
 
 pub fn thermal_factor(params: &ModelParameters, temperature_k: f64) -> f64 {
-    let normalized = ((params.thermal_limit_k - temperature_k) / params.thermal_gain_soft_zone_k.max(1.0))
-        .clamp(0.0, 1.0);
+    let normalized = ((params.thermal_limit_k - temperature_k)
+        / params.thermal_gain_soft_zone_k.max(1.0))
+    .clamp(0.0, 1.0);
     params.min_gain_fraction + (1.0 - params.min_gain_fraction) * smoothstep01(normalized)
 }
 

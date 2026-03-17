@@ -13,8 +13,16 @@ pub fn render_run_plots(run_root: &Path, result: &SimulationResult) -> Result<()
     let plots_dir = run_root.join("plots");
     fs::create_dir_all(&plots_dir)?;
 
-    let times: Vec<f64> = result.time_series.iter().map(|record| record.time_s).collect();
-    let ep_gj: Vec<f64> = result.time_series.iter().map(|record| record.ep_gj).collect();
+    let times: Vec<f64> = result
+        .time_series
+        .iter()
+        .map(|record| record.time_s)
+        .collect();
+    let ep_gj: Vec<f64> = result
+        .time_series
+        .iter()
+        .map(|record| record.ep_gj)
+        .collect();
     let temperature_c: Vec<f64> = result
         .time_series
         .iter()
@@ -41,13 +49,16 @@ pub fn render_run_plots(run_root: &Path, result: &SimulationResult) -> Result<()
         .iter()
         .map(|record| {
             (record.temperature_k - result.config.model.ambient_temperature_k)
-                / (result.config.model.thermal_limit_k - result.config.model.ambient_temperature_k).max(1.0)
+                / (result.config.model.thermal_limit_k - result.config.model.ambient_temperature_k)
+                    .max(1.0)
         })
         .collect();
     let power_fraction: Vec<f64> = result
         .time_series
         .iter()
-        .map(|record| record.requested_actuator_power_w / result.config.model.actuator_peak_power_w.max(1.0))
+        .map(|record| {
+            record.requested_actuator_power_w / result.config.model.actuator_peak_power_w.max(1.0)
+        })
         .collect();
 
     line_plot(
@@ -79,9 +90,9 @@ pub fn render_run_plots(run_root: &Path, result: &SimulationResult) -> Result<()
     )?;
     line_plot(
         &plots_dir.join("y_vs_time.png"),
-        "Reduced Mechanical Output y(t)",
+        "Reduced Maneuver Response y(t)",
         "Time [s]",
-        "y [m]",
+        "Reduced response y [proxy m]",
         &times,
         &[("y", &y_m, color(0x94, 0x63, 0xA6))],
     )?;
@@ -101,7 +112,11 @@ pub fn render_run_plots(run_root: &Path, result: &SimulationResult) -> Result<()
         &times,
         &[
             ("Ep / Ep_max", &ep_fraction, color(0x1F, 0x77, 0xB4)),
-            ("(T - Tamb) / (Tlim - Tamb)", &temperature_fraction, color(0xD6, 0x27, 0x28)),
+            (
+                "(T - Tamb) / (Tlim - Tamb)",
+                &temperature_fraction,
+                color(0xD6, 0x27, 0x28),
+            ),
             ("P / P_peak", &power_fraction, color(0xFF, 0x7F, 0x0E)),
         ],
     )?;
@@ -140,6 +155,54 @@ pub fn render_run_plots(run_root: &Path, result: &SimulationResult) -> Result<()
         color(0xFF, 0x7F, 0x0E),
     )?;
 
+    if result.config.scenario.name == "burst" {
+        line_plot(
+            &plots_dir.join("burst_ep_vs_time.png"),
+            "Burst Pulse-Layer Energy vs Time",
+            "Time [s]",
+            "Ep [GJ]",
+            &times,
+            &[("Ep", &ep_gj, color(0x1F, 0x77, 0xB4))],
+        )?;
+    }
+
+    if result.config.scenario.name == "hover" {
+        line_plot(
+            &plots_dir.join("hover_temperature_vs_time.png"),
+            "Hover Thermal Rise vs Time",
+            "Time [s]",
+            "Temperature [C]",
+            &times,
+            &[("T", &temperature_c, color(0xD6, 0x27, 0x28))],
+        )?;
+    }
+
+    if result.config.scenario.name == "stress" {
+        line_plot(
+            &plots_dir.join("stress_limb_buffers.png"),
+            "Stress-Case Limb Buffer Trajectories",
+            "Time [s]",
+            "Buffer Energy [MJ]",
+            &times,
+            &[
+                ("front_left", &limb_series[0], color(0x2C, 0x7B, 0xB6)),
+                ("front_right", &limb_series[1], color(0x63, 0x99, 0x40)),
+                ("rear_left", &limb_series[2], color(0xD6, 0x27, 0x28)),
+                ("rear_right", &limb_series[3], color(0x94, 0x63, 0xA6)),
+            ],
+        )?;
+    }
+
+    phase_plot(
+        &plots_dir.join("phase_portrait.png"),
+        "Reduced-State Phase Portrait",
+        "Ep [GJ]",
+        "Temperature [C]",
+        &ep_gj,
+        &temperature_c,
+        color(0x22, 0x7A, 0x59),
+    )?;
+
     Ok(())
 }
 
@@ -149,6 +212,15 @@ pub fn render_sweep_plots(run_root: &Path, aggregate: &SweepAggregate) -> Result
 
     line_from_cases(
         &plots_dir.join("pc_vs_recharge_time.png"),
+        "Pc vs Recharge Time",
+        "Continuous Power Pc [MW]",
+        "Recharge Time [s]",
+        &group_cases(&aggregate.case_summaries, "recharge_pc"),
+        |case| case.continuous_power_mw,
+        |case| case.recharge_time_s.unwrap_or(0.0),
+    )?;
+    line_from_cases(
+        &plots_dir.join("sweep_pc_vs_recharge.png"),
         "Pc vs Recharge Time",
         "Continuous Power Pc [MW]",
         "Recharge Time [s]",
@@ -193,6 +265,38 @@ pub fn render_sweep_plots(run_root: &Path, aggregate: &SweepAggregate) -> Result
         |case| case.saturation_count as f64,
     )?;
 
+    let thermal_cases = group_cases(&aggregate.case_summaries, "thermal_duty_matrix");
+    if !thermal_cases.is_empty() {
+        heatmap_from_cases(
+            &plots_dir.join("thermal_duty_heatmap.png"),
+            "Thermal Rejection vs Duty-Cycle Cadence",
+            "Burst cadence [s]",
+            "Thermal rejection [MW/K]",
+            "Mean authority utilization [-]",
+            &thermal_cases,
+            |case| case.burst_cadence_s.unwrap_or(0.0),
+            |case| case.thermal_rejection_mw_per_k,
+            |case| case.mean_authority_utilization,
+        )?;
+    }
+
+    let allocation_cases = group_cases(&aggregate.case_summaries, "allocation_policy");
+    if !allocation_cases.is_empty() {
+        category_plot(
+            &plots_dir.join("limb_allocation_comparison.png"),
+            "Allocation Policy Comparison",
+            "Allocation policy",
+            "Mean delivered/requested ratio [-]",
+            &allocation_cases,
+            |case| {
+                case.allocation_strategy
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string())
+            },
+            |case| case.mean_delivered_ratio,
+        )?;
+    }
+
     Ok(())
 }
 
@@ -224,7 +328,10 @@ fn line_plot(
     drawing_area.fill(&WHITE)?;
 
     let x_range = axis_range(x_values);
-    let y_data: Vec<f64> = series.iter().flat_map(|(_, values, _)| values.iter().copied()).collect();
+    let y_data: Vec<f64> = series
+        .iter()
+        .flat_map(|(_, values, _)| values.iter().copied())
+        .collect();
     let y_range = axis_range(&y_data);
 
     let mut chart = ChartBuilder::on(&drawing_area)
@@ -313,7 +420,11 @@ fn line_from_cases(
         return Ok(());
     }
     let mut sorted = cases.to_vec();
-    sorted.sort_by(|left, right| x_fn(left).partial_cmp(&x_fn(right)).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|left, right| {
+        x_fn(left)
+            .partial_cmp(&x_fn(right))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     let x_values: Vec<f64> = sorted.iter().map(&x_fn).collect();
     let y_values: Vec<f64> = sorted.iter().map(&y_fn).collect();
     line_plot(
@@ -324,6 +435,113 @@ fn line_from_cases(
         &x_values,
         &[("summary", &y_values, color(0x2C, 0x7B, 0xB6))],
     )
+}
+
+fn heatmap_from_cases(
+    path: &Path,
+    title: &str,
+    x_label: &str,
+    y_label: &str,
+    color_label: &str,
+    cases: &[SweepCaseSummary],
+    x_fn: impl Fn(&SweepCaseSummary) -> f64,
+    y_fn: impl Fn(&SweepCaseSummary) -> f64,
+    z_fn: impl Fn(&SweepCaseSummary) -> f64,
+) -> Result<()> {
+    let drawing_area = BitMapBackend::new(path, SIZE).into_drawing_area();
+    drawing_area.fill(&WHITE)?;
+    let x_values: Vec<f64> = cases.iter().map(&x_fn).collect();
+    let y_values: Vec<f64> = cases.iter().map(&y_fn).collect();
+    let z_values: Vec<f64> = cases.iter().map(&z_fn).collect();
+    let x_range = axis_range(&x_values);
+    let y_range = axis_range(&y_values);
+    let z_min = z_values.iter().copied().fold(f64::INFINITY, f64::min);
+    let z_max = z_values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+
+    let mut chart = ChartBuilder::on(&drawing_area)
+        .caption(title, ("sans-serif", 32))
+        .margin(20)
+        .x_label_area_size(50)
+        .y_label_area_size(70)
+        .build_cartesian_2d(x_range.0..x_range.1, y_range.0..y_range.1)?;
+
+    chart
+        .configure_mesh()
+        .x_desc(x_label)
+        .y_desc(y_label)
+        .light_line_style(WHITE.mix(0.15))
+        .draw()?;
+
+    for case in cases {
+        let x = x_fn(case);
+        let y = y_fn(case);
+        let z = z_fn(case);
+        let normalized = if (z_max - z_min).abs() < 1.0e-9 {
+            0.5
+        } else {
+            ((z - z_min) / (z_max - z_min)).clamp(0.0, 1.0)
+        };
+        let fill = HSLColor(0.62 - 0.52 * normalized, 0.75, 0.55);
+        chart.draw_series(std::iter::once(Rectangle::new(
+            [(x - 0.8, y - 0.35), (x + 0.8, y + 0.35)],
+            fill.filled(),
+        )))?;
+    }
+
+    drawing_area.draw(&Text::new(
+        color_label,
+        (SIZE.0 as i32 - 240, 36),
+        ("sans-serif", 24).into_font().color(&BLACK),
+    ))?;
+    drawing_area.present()?;
+    Ok(())
+}
+
+fn category_plot(
+    path: &Path,
+    title: &str,
+    x_label: &str,
+    y_label: &str,
+    cases: &[SweepCaseSummary],
+    x_fn: impl Fn(&SweepCaseSummary) -> String,
+    y_fn: impl Fn(&SweepCaseSummary) -> f64,
+) -> Result<()> {
+    if cases.is_empty() {
+        return Ok(());
+    }
+    let drawing_area = BitMapBackend::new(path, SIZE).into_drawing_area();
+    drawing_area.fill(&WHITE)?;
+    let labels: Vec<String> = cases.iter().map(&x_fn).collect();
+    let values: Vec<f64> = cases.iter().map(&y_fn).collect();
+    let y_range = axis_range(&values);
+
+    let mut chart = ChartBuilder::on(&drawing_area)
+        .caption(title, ("sans-serif", 32))
+        .margin(20)
+        .x_label_area_size(80)
+        .y_label_area_size(70)
+        .build_cartesian_2d(0usize..labels.len(), y_range.0..y_range.1)?;
+
+    chart
+        .configure_mesh()
+        .x_desc(x_label)
+        .y_desc(y_label)
+        .x_labels(labels.len())
+        .x_label_formatter(&|index| labels.get(*index).cloned().unwrap_or_default())
+        .light_line_style(WHITE.mix(0.15))
+        .draw()?;
+
+    chart.draw_series(values.iter().enumerate().map(|(index, value)| {
+        let left = index;
+        let right = index + 1;
+        Rectangle::new(
+            [(left, 0.0), (right, *value)],
+            color(0x2C, 0x7B, 0xB6).filled(),
+        )
+    }))?;
+
+    drawing_area.present()?;
+    Ok(())
 }
 
 fn group_cases<'a>(cases: &'a [SweepCaseSummary], group: &str) -> Vec<SweepCaseSummary> {
@@ -341,7 +559,11 @@ fn axis_range(values: &[f64]) -> (f64, f64) {
     let min = values.iter().copied().fold(f64::INFINITY, f64::min);
     let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     if (max - min).abs() < 1.0e-9 {
-        let padding = if max.abs() < 1.0 { 1.0 } else { max.abs() * 0.1 };
+        let padding = if max.abs() < 1.0 {
+            1.0
+        } else {
+            max.abs() * 0.1
+        };
         return (min - padding, max + padding);
     }
     let padding = (max - min) * 0.08;

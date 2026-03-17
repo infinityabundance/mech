@@ -3,6 +3,7 @@ pub mod errors;
 pub mod integrator;
 pub mod metrics;
 pub mod model;
+pub mod monitor;
 pub mod outputs;
 pub mod plots;
 pub mod scenarios;
@@ -97,14 +98,10 @@ fn apply_cli_overrides(
 ) {
     match run_config {
         RunConfig::Scenario {
-            seed,
-            output_root,
-            ..
+            seed, output_root, ..
         }
         | RunConfig::Sweep {
-            seed,
-            output_root,
-            ..
+            seed, output_root, ..
         } => {
             if let Some(value) = output_root_override {
                 *output_root = Some(value.to_path_buf());

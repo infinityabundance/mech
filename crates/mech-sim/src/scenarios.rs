@@ -32,6 +32,8 @@ pub fn build_sweep_cases(
 ) -> Result<Vec<SweepCase>> {
     let mut cases = match preset {
         SweepPreset::Baseline => baseline_sweep_cases(seed)?,
+        SweepPreset::ThermalDutyMatrix => thermal_duty_matrix_cases(seed)?,
+        SweepPreset::LimbAllocationComparison => limb_allocation_comparison_cases(seed)?,
     };
     if !is_noop_overrides(&overrides) {
         for case in &mut cases {
@@ -50,7 +52,10 @@ pub fn sample_control(profile: &ScenarioProfile, seed: u64, time_s: f64) -> Cont
     let mut best_demand = profile.idle_command;
 
     for segment in &profile.segments {
-        if time_s >= segment.start_s && time_s < segment.end_s && segment.demand_fraction >= best_demand {
+        if time_s >= segment.start_s
+            && time_s < segment.end_s
+            && segment.demand_fraction >= best_demand
+        {
             best_demand = segment.demand_fraction;
             command_fraction = segment.demand_fraction;
             disturbance_n = segment.disturbance_n;
@@ -88,7 +93,8 @@ fn burst_config(seed: u64) -> SimulationConfig {
     let scenario = ScenarioProfile {
         preset: ScenarioPreset::Burst,
         name: "burst".to_string(),
-        description: "One 1 GW-class, 1 second pulse followed by recharge and thermal decay.".to_string(),
+        description: "One 1 GW-class, 1 second pulse followed by recharge and thermal decay."
+            .to_string(),
         idle_command: 0.0,
         baseline_allocation: AllocationStrategy::Equal,
         seeded_command_wobble: 0.0,
@@ -133,7 +139,9 @@ fn recharge_config(seed: u64) -> SimulationConfig {
     let scenario = ScenarioProfile {
         preset: ScenarioPreset::Recharge,
         name: "recharge".to_string(),
-        description: "No maneuver demand; central pulse store refills from a 50 MW continuous power source.".to_string(),
+        description:
+            "No maneuver demand; central pulse store refills from a 50 MW continuous power source."
+                .to_string(),
         idle_command: 0.0,
         baseline_allocation: AllocationStrategy::Equal,
         seeded_command_wobble: 0.0,
@@ -161,17 +169,31 @@ fn duty_cycle_config(seed: u64) -> SimulationConfig {
     };
     let segments = vec![
         burst_segment("burst_a", 4.0, 5.0, 0.95, AllocationStrategy::Equal),
-        burst_segment("burst_b", 14.0, 15.0, 0.90, AllocationStrategy::DiagonalBias),
+        burst_segment(
+            "burst_b",
+            14.0,
+            15.0,
+            0.90,
+            AllocationStrategy::DiagonalBias,
+        ),
         burst_segment("burst_c", 24.0, 25.0, 0.92, AllocationStrategy::Equal),
         burst_segment("burst_d", 38.0, 39.0, 0.88, AllocationStrategy::FrontBiased),
-        burst_segment("burst_e", 52.0, 53.0, 0.94, AllocationStrategy::DiagonalBias),
+        burst_segment(
+            "burst_e",
+            52.0,
+            53.0,
+            0.94,
+            AllocationStrategy::DiagonalBias,
+        ),
         burst_segment("burst_f", 68.0, 69.0, 0.90, AllocationStrategy::Equal),
         burst_segment("burst_g", 82.0, 83.0, 0.92, AllocationStrategy::RearBiased),
     ];
     let scenario = ScenarioProfile {
         preset: ScenarioPreset::DutyCycle,
         name: "duty-cycle".to_string(),
-        description: "Repeated burst / coast / recharge pattern that exposes effective duty-cycle limits.".to_string(),
+        description:
+            "Repeated burst / coast / recharge pattern that exposes effective duty-cycle limits."
+                .to_string(),
         idle_command: 0.02,
         baseline_allocation: AllocationStrategy::Equal,
         seeded_command_wobble: 0.0,
@@ -213,7 +235,8 @@ fn hover_config(seed: u64) -> SimulationConfig {
     let scenario = ScenarioProfile {
         preset: ScenarioPreset::Hover,
         name: "hover".to_string(),
-        description: "Hover-equivalent sustained maneuver demand in the 350-500 MW window.".to_string(),
+        description: "Hover-equivalent sustained maneuver demand in the 350-500 MW window."
+            .to_string(),
         idle_command: 0.0,
         baseline_allocation: AllocationStrategy::Equal,
         seeded_command_wobble: 0.0,
@@ -447,7 +470,9 @@ fn baseline_sweep_cases(seed: u64) -> Result<Vec<SweepCase>> {
         ));
     }
 
-    for (damping_scale, stiffness_scale) in [(0.8, 0.8), (0.8, 1.2), (1.0, 1.0), (1.2, 0.8), (1.2, 1.2)] {
+    for (damping_scale, stiffness_scale) in
+        [(0.8, 0.8), (0.8, 1.2), (1.0, 1.0), (1.2, 0.8), (1.2, 1.2)]
+    {
         let config = build_scenario_config(
             ScenarioPreset::DutyCycle,
             ScenarioOverrides {
@@ -468,6 +493,58 @@ fn baseline_sweep_cases(seed: u64) -> Result<Vec<SweepCase>> {
     Ok(cases)
 }
 
+fn thermal_duty_matrix_cases(seed: u64) -> Result<Vec<SweepCase>> {
+    let mut cases = Vec::new();
+    for rejection_mw_per_k in [2.5, 3.5, 4.5, 5.5, 6.5] {
+        for burst_cadence_s in [8.0, 12.0, 16.0, 20.0] {
+            let mut config = build_scenario_config(
+                ScenarioPreset::DutyCycle,
+                ScenarioOverrides {
+                    thermal_rejection_mw_per_k: Some(rejection_mw_per_k),
+                    ..ScenarioOverrides::default()
+                },
+                seed,
+            )?;
+            apply_burst_cadence(&mut config, burst_cadence_s);
+            cases.push(case(
+                "thermal_duty_matrix",
+                format!(
+                    "thermal_duty_qr_{rejection_mw_per_k:.1}_cadence_{burst_cadence_s:.0}"
+                ),
+                format!(
+                    "Thermal rejection {rejection_mw_per_k:.1} MW/K with repeated-burst cadence {burst_cadence_s:.0} s"
+                ),
+                config,
+            ));
+        }
+    }
+    Ok(cases)
+}
+
+fn limb_allocation_comparison_cases(seed: u64) -> Result<Vec<SweepCase>> {
+    let mut cases = Vec::new();
+    for strategy in [
+        AllocationStrategy::Equal,
+        AllocationStrategy::FrontBiased,
+        AllocationStrategy::RearBiased,
+        AllocationStrategy::DiagonalBias,
+    ] {
+        let mut config =
+            build_scenario_config(ScenarioPreset::Stress, ScenarioOverrides::default(), seed)?;
+        force_allocation_strategy(&mut config, strategy);
+        cases.push(case(
+            "allocation_policy",
+            format!("allocation_policy_{}", allocation_slug(strategy)),
+            format!(
+                "Stress-case allocation comparison using {} policy",
+                allocation_display_name(strategy)
+            ),
+            config,
+        ));
+    }
+    Ok(cases)
+}
+
 fn case(group: &str, case_id: String, note: String, config: SimulationConfig) -> SweepCase {
     let metadata = SweepCaseMetadata {
         case_id,
@@ -482,6 +559,8 @@ fn case(group: &str, case_id: String, note: String, config: SimulationConfig) ->
         actuator_demand_scale: config.model.actuator_demand_scale,
         damping_scale: config.model.damping_scale,
         stiffness_scale: config.model.stiffness_scale,
+        burst_cadence_s: burst_cadence_s(&config.scenario),
+        allocation_strategy: Some(config.scenario.baseline_allocation),
     };
     SweepCase { metadata, config }
 }
@@ -563,6 +642,8 @@ fn refresh_case_metadata(case: &mut SweepCase) {
     case.metadata.actuator_demand_scale = case.config.model.actuator_demand_scale;
     case.metadata.damping_scale = case.config.model.damping_scale;
     case.metadata.stiffness_scale = case.config.model.stiffness_scale;
+    case.metadata.burst_cadence_s = burst_cadence_s(&case.config.scenario);
+    case.metadata.allocation_strategy = Some(case.config.scenario.baseline_allocation);
 }
 
 fn primary_burst_duration(profile: &ScenarioProfile) -> f64 {
@@ -572,4 +653,66 @@ fn primary_burst_duration(profile: &ScenarioProfile) -> f64 {
         .filter(|segment| segment.label.contains("burst"))
         .map(|segment| segment.end_s - segment.start_s)
         .fold(0.0, f64::max)
+}
+
+fn burst_cadence_s(profile: &ScenarioProfile) -> Option<f64> {
+    let mut starts: Vec<f64> = profile
+        .segments
+        .iter()
+        .filter(|segment| segment.label.contains("burst"))
+        .map(|segment| segment.start_s)
+        .collect();
+    starts.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    if starts.len() < 2 {
+        return None;
+    }
+    let deltas: Vec<f64> = starts.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    Some(deltas.iter().sum::<f64>() / deltas.len() as f64)
+}
+
+fn apply_burst_cadence(config: &mut SimulationConfig, burst_cadence_s: f64) {
+    let mut burst_index = 0usize;
+    for segment in &mut config.scenario.segments {
+        if segment.label.contains("burst") {
+            let duration_s = segment.end_s - segment.start_s;
+            let start_s = 4.0 + burst_index as f64 * burst_cadence_s;
+            segment.start_s = start_s;
+            segment.end_s = start_s + duration_s;
+            burst_index += 1;
+        }
+    }
+    if let Some(last_end_s) = config
+        .scenario
+        .segments
+        .iter()
+        .map(|segment| segment.end_s)
+        .max_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal))
+    {
+        config.solver.duration_s = last_end_s + burst_cadence_s.max(10.0);
+    }
+}
+
+fn force_allocation_strategy(config: &mut SimulationConfig, strategy: AllocationStrategy) {
+    config.scenario.baseline_allocation = strategy;
+    for segment in &mut config.scenario.segments {
+        segment.allocation_strategy = Some(strategy);
+    }
+}
+
+fn allocation_slug(strategy: AllocationStrategy) -> &'static str {
+    match strategy {
+        AllocationStrategy::Equal => "equal",
+        AllocationStrategy::FrontBiased => "front_biased",
+        AllocationStrategy::RearBiased => "rear_biased",
+        AllocationStrategy::DiagonalBias => "diagonal_bias",
+    }
+}
+
+fn allocation_display_name(strategy: AllocationStrategy) -> &'static str {
+    match strategy {
+        AllocationStrategy::Equal => "equal-share",
+        AllocationStrategy::FrontBiased => "priority-front",
+        AllocationStrategy::RearBiased => "priority-rear",
+        AllocationStrategy::DiagonalBias => "diagonal-bias",
+    }
 }
